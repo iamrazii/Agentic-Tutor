@@ -1,0 +1,6 @@
+.env
+frontend/_pycache_
+backend/*.mod
+backend/*.exe
+backend/*.sum
+backend/_pycache_
