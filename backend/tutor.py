@@ -9,10 +9,8 @@ from langgraph.checkpoint.memory import MemorySaver
 import streamlit as st
 import numpy as np
 from dotenv import load_dotenv
-import os
-import sys
-import json
-
+import os,sys,json
+from backend.querymode import SettingUp
 
 sys.stdout.reconfigure(encoding='utf-8')
 load_dotenv()
@@ -58,12 +56,12 @@ class TutorState(TypedDict):
 
 
 user_queries = []
-def init_tutor_agent(files):
+def init_tutor_agent(retrevier1,retirver2):
     preprocessor = Preprocessor()
-    chunks = preprocessor.load_and_process(files)
-    en_retriever, strict_retriever = preprocessor.build_retriever(chunks)
+    en_retriever = retrevier1
+    strict_retriever = retirver2
     safe_ret = preprocessor.build_safe_retriever(en_retriever, strict_retriever)
-    llm = ChatGoogleGenerativeAI(model='gemini-2.0-flash', temperature=0.2)
+    llm = ChatGoogleGenerativeAI(model='gemini-2.0-flash', temperature=0.5)
     embedding = GoogleGenerativeAIEmbeddings(model="models/embedding-001")
     # return everything your agent needs
     return en_retriever, strict_retriever,safe_ret, llm, embedding

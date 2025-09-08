@@ -16,7 +16,7 @@ def SettingUp(fileobjs):
     preprocessor = Preprocessor()
     chunks = preprocessor.load_and_process(fileobjs)
     en_retriever, strict_retriever = preprocessor.build_retriever(chunks)
-    return chunks, en_retriever
+    return chunks, en_retriever,strict_retriever
 
 def build_chain(chunks, hybrid_retriever):
     # Single LLM instance with higher temperature for faster processing
