@@ -6,6 +6,7 @@ from langchain.retrievers import EnsembleRetriever
 from typing import TypedDict
 import os,tempfile,re,subprocess,json
 from concurrent.futures import ThreadPoolExecutor
+
 from langchain_community.document_loaders import (
     UnstructuredWordDocumentLoader,
     UnstructuredPowerPointLoader,
@@ -183,17 +184,17 @@ class Preprocessor:
 
     def load_and_process(self, objs):
         docs = load_documents(objs)
-        print("Documents loaded\n")
+        print("Documents loaded hahaha \n")
         sections = split_into_sections(docs)
         chunks = chunk_sections(sections)
-        print("chunks created\n")
+        print("chunks created heheheh\n")
         return chunks
     
     def build_retriever(self, chunks, k=25):
         """Optimized retriever builder with parallel processing"""
         # Filter out empty chunks upfront
         chunks = [chunk for chunk in chunks if chunk.page_content.strip()]
-        
+        print("chunks filtered out\n")
         # Build FAISS and BM25 in parallel
         with ThreadPoolExecutor(max_workers=2) as executor:
             faiss_future = executor.submit(FAISS.from_documents, chunks, self.embeddings)
