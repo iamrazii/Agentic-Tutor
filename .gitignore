@@ -1,6 +1,6 @@
 .env
-frontend/_pycache_
+frontend/__pycache__
 backend/*.mod
 backend/*.exe
 backend/*.sum
-backend/_pycache_
+backend/__pycache__
