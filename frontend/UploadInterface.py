@@ -5,7 +5,7 @@ from backend.querymode import SettingUp, build_chain
 def upload_section():
     st.subheader("📂 Upload Documents")
     uploaded_files = st.file_uploader(
-        "Upload up to 3 documents (.pdf, .txt, .docx). Note: more files will take more time to preprocess and embedd ",
+        "Upload up to 3 documents (.pdf, .txt, .docx). Note: Larger files will take more time to preprocess and embedd ",
         type=["pdf", "txt", "docx"],
         accept_multiple_files=True,
     )
@@ -15,12 +15,12 @@ def upload_section():
             st.error("⚠️ Maximum 3 files only.")
         else:
             if st.button("Submit Documents"):
-                with st.spinner("🔄 Processing documents..."):
+                with st.spinner("🔄 Processing documents and setting retriever"):
                     # Directly pass file objects instead of paths
                     file_objs = uploaded_files  
 
                     # Query Mode
-                    chunks, en_retriever = SettingUp(file_objs)
+                    chunks, en_retriever,strict_retriever = SettingUp(file_objs)
                     print("Upload Interface: retriever created \n")
                     st.session_state.query_chain = build_chain(chunks, en_retriever)
                     print("Upload Interface: chain created \n")
@@ -31,7 +31,7 @@ def upload_section():
                         st.session_state.safe_ret,
                         st.session_state.llm,
                         st.session_state.embedding,
-                    ) = init_tutor_agent(file_objs)
+                    ) = init_tutor_agent(en_retriever,strict_retriever)
 
                     st.session_state.docs_uploaded = True
                     st.session_state.current_state = initial_state.copy()
