@@ -219,7 +219,7 @@ class Preprocessor:
 
         strict_retriever = faiss_store.as_retriever(
             search_type="similarity_score_threshold",
-            search_kwargs={"score_threshold": 0.80, "k": 5},
+            search_kwargs={"score_threshold": 0.40, "k": 5},
         )
         print("Retrievers Created.")
         return ensemble_retriever, strict_retriever
