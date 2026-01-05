@@ -5,9 +5,8 @@ from frontend.UtilitySetup import reset_session
 
 def tutor_mode_tab():
     st.subheader("🎓 Tutor Mode")
-    # paste your Step 1–5 logic here as-is (with minor refactoring)
 
-        # Step 1: Enter Topic
+        #Enter Topic
     if not st.session_state.current_state.get("overview_text"):
         topic_input = st.text_input("Enter a topic:")
         if st.button("Submit Topic") and topic_input.strip():
@@ -37,7 +36,7 @@ def tutor_mode_tab():
                     st.error(f"Error validating topic: {str(e)}")
                     st.session_state.current_state = initial_state.copy()
 
-    # Step 2: Show Overview and Choose Mode
+    # Show Overview and Choose Mode
     if st.session_state.current_state.get("overview_text") and not st.session_state.current_state.get("evaluation_style"):
         st.write("### 📘 Overview")
         st.markdown(st.session_state.current_state["overview_text"])
@@ -73,7 +72,7 @@ def tutor_mode_tab():
                 except Exception as e:
                     st.error(f"Error generating questions: {str(e)}")
 
-    # Step 4: Start Quiz Button
+    # Start Quiz Button
     if (st.session_state.current_state.get("questions") and 
         not st.session_state.current_state.get("quiz_started") and
         st.session_state.current_state.get("mode") != "Quiz"):
@@ -91,7 +90,7 @@ def tutor_mode_tab():
             st.session_state.current_state["current_question"] = None
             st.session_state.current_state["feedback_text"] = ""
             st.rerun()
-# Step 5: Quiz Interface
+        # Quiz Interface
     if st.session_state.current_state.get("quiz_started") and st.session_state.current_state.get("questions"):
         state = st.session_state.current_state
         q_no = state["question_no"]
@@ -191,10 +190,11 @@ def tutor_mode_tab():
 
         else:
             # Quiz completed
-            st.write("### Quiz Completed!")
+            st.write(" Quiz Completed!")
             
             max_points = st.session_state.current_state["max_points"]
             current_points = state.get("current_points")
+            print(current_points)
             
             st.write(f"**Final Score:** {current_points}/{max_points} points")
             
