@@ -20,7 +20,7 @@ def SettingUp(fileobjs):
 
 def build_chain(chunks, hybrid_retriever):
     # Single LLM instance with higher temperature for faster processing
-    llm = ChatGoogleGenerativeAI(model='gemini-2.0-flash', temperature=0.6)
+    llm = ChatGoogleGenerativeAI(model='gemini-2.5-flash', temperature=1.0)
     parser = StrOutputParser()
     
     # Pre-compute full context once
