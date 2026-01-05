@@ -1,10 +1,12 @@
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_community.vectorstores import FAISS
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
+from langchain_huggingface import HuggingFaceEndpointEmbeddings
 from langchain_community.retrievers import BM25Retriever
 from langchain.retrievers import EnsembleRetriever
 from typing import TypedDict
 import os,tempfile,re,subprocess,json
+from dotenv import load_dotenv
 from concurrent.futures import ThreadPoolExecutor
 
 from langchain_community.document_loaders import (
@@ -14,6 +16,9 @@ from langchain_community.document_loaders import (
 )
 
 from langchain.docstore.document import Document
+
+load_dotenv()
+HF_TOKEN = os.getenv("HF_TOKEN")
 
 def load_documents(file_objs):
         
@@ -180,14 +185,16 @@ class Preprocessor:
         self.splitter = RecursiveCharacterTextSplitter(
             chunk_size=chunk_size, chunk_overlap=overlap
         )
-        self.embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001")
+        # self.embeddings = GoogleGenerativeAIEmbeddings(model = "models/gemini-embedding-exp-03-07")
+        self.embeddings = HuggingFaceEndpointEmbeddings( model="sentence-transformers/all-MiniLM-L6-v2",
+    huggingfacehub_api_token=HF_TOKEN)
 
     def load_and_process(self, objs):
         docs = load_documents(objs)
-        print("Documents loaded hahaha \n")
+        print("Documents loaded\n")
         sections = split_into_sections(docs)
         chunks = chunk_sections(sections)
-        print("chunks created heheheh\n")
+        print("chunks created\n")
         return chunks
     
     def build_retriever(self, chunks, k=25):
@@ -195,14 +202,14 @@ class Preprocessor:
         # Filter out empty chunks upfront
         chunks = [chunk for chunk in chunks if chunk.page_content.strip()]
         print("chunks filtered out\n")
-        # Build FAISS and BM25 in parallel
+        # Build FAISS and BM25 in parallel (2 threads)
         with ThreadPoolExecutor(max_workers=2) as executor:
             faiss_future = executor.submit(FAISS.from_documents, chunks, self.embeddings)
             bm25_future = executor.submit(BM25Retriever.from_documents, chunks)
-            
             faiss_store = faiss_future.result()
+            
             bm25 = bm25_future.result()
-        
+            
         bm25.k = k
 
         ensemble_retriever = EnsembleRetriever(
@@ -212,9 +219,9 @@ class Preprocessor:
 
         strict_retriever = faiss_store.as_retriever(
             search_type="similarity_score_threshold",
-            search_kwargs={"score_threshold": 0.90, "k": 5},
+            search_kwargs={"score_threshold": 0.80, "k": 5},
         )
-
+        print("Retrievers Created.")
         return ensemble_retriever, strict_retriever
 
     def build_safe_retriever(self, ensemble_retriever, strict_retriever):
