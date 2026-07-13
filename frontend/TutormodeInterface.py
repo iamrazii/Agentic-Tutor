@@ -1,215 +1,216 @@
 import streamlit as st
-from backend.tutor import workflow, initial_state, calculate_similarity
-import time
+import requests
 from frontend.UtilitySetup import reset_session
+
+API_URL = "http://localhost:8000"
 
 def tutor_mode_tab():
     st.subheader("🎓 Tutor Mode")
+    
+    if not st.session_state.get("session_id"):
+        st.warning("Please upload documents first.")
+        return
 
-        #Enter Topic
-    if not st.session_state.current_state.get("overview_text"):
-        topic_input = st.text_input("Enter a topic:")
+    state = st.session_state.current_state
+
+    # ==========================================
+    # SCREEN 1: Ask for Topic
+    # ==========================================
+    if not state.get("overview_text"):
+        topic_input = st.text_input("Enter a topic you want to learn about:")
         if st.button("Submit Topic") and topic_input.strip():
-            with st.spinner("🔄 Validating topic and generating overview..."):
+            with st.spinner("🔄 Scanning documents and generating overview..."):
                 try:
-                    in_state = st.session_state.current_state.copy()
-                    in_state["topic"] = topic_input
-
-                    result = workflow.invoke(
-                        in_state,
-                        retrievers={"strict_retriever": st.session_state.strict_ret},
-                        config={
-                            "configurable": {
-                                "thread_id": st.session_state.thread_id,
-                                "until": ["evaluation_mode"]
-                            }
-                        },
-                    )
-                    st.session_state.current_state = result
-                    if result.get("branch") == "invalid":
-                        st.error("⚠️ Topic not found in documents. Try another.")
-                        st.session_state.current_state = initial_state.copy()
+                    # 1. Initialize session on backend
+                    requests.post(f"{API_URL}/tutor/start", json={
+                        "session_id": st.session_state.session_id,
+                        "thread_id": st.session_state.thread_id
+                    })
+                    
+                    # 2. Set topic
+                    res = requests.post(f"{API_URL}/tutor/topic", json={
+                        "session_id": st.session_state.session_id,
+                        "thread_id": st.session_state.thread_id,
+                        "topic": topic_input
+                    })
+                    
+                    if res.status_code == 200:
+                        data = res.json()
+                        if data.get("status") == "error":
+                            st.error("⚠️ Topic not found in documents. Try another.")
+                        else:
+                            state["overview_text"] = data["overview"]
+                            st.rerun() # Rerunning hides this input and shows Screen 2
                     else:
-                        st.success("✅ Topic validated! Overview generated.")
-                        st.rerun()
+                        st.error(f"Backend Error: {res.json().get('detail', 'Unknown error')}")
                 except Exception as e:
-                    st.error(f"Error validating topic: {str(e)}")
-                    st.session_state.current_state = initial_state.copy()
+                    st.error(f"Failed to connect to server: {str(e)}")
 
-    # Show Overview and Choose Mode
-    if st.session_state.current_state.get("overview_text") and not st.session_state.current_state.get("evaluation_style"):
-        st.write("### 📘 Overview")
-        st.markdown(st.session_state.current_state["overview_text"])
+    # ==========================================
+    # SCREEN 2: Overview & Evaluation Style
+    # ==========================================
+    elif state.get("overview_text") and not state.get("evaluation_style"):
+        st.write("### 📘 Topic Overview")
+        st.markdown(state["overview_text"])
 
-        st.write("### Choose Evaluation Mode")
+        st.write("### How would you like to be evaluated?")
         col1, col2 = st.columns(2)
         with col1:
-            if st.button("📝 MCQ"):
-                st.session_state.current_state["evaluation_style"] = "MCQ"
-                st.rerun()
+            if st.button("📝 Multiple Choice (MCQ)", use_container_width=True):
+                _generate_questions("MCQ", state)
         with col2:
-            if st.button("✏️ Short Questions"):
-                st.session_state.current_state["evaluation_style"] = "SQ"
-                st.rerun()
+            if st.button("✏️ Short Questions (SQ)", use_container_width=True):
+                _generate_questions("SQ", state)
 
-    # Step 3: Generate Questions
-    if st.session_state.current_state.get("evaluation_style") and not st.session_state.current_state.get("questions"):
-        st.write(f"### Selected Mode: {st.session_state.current_state['evaluation_style']}")
-        if st.button("Generate Questions"):
-            with st.spinner("🔄 Generating questions..."):
-                try:
-                    result = workflow.invoke(
-                        st.session_state.current_state,
-                        retrievers={"en_retriever": st.session_state.en_retriever},
-                        config={"configurable": {"thread_id": st.session_state.thread_id}},
-                    )
-                    st.session_state.current_state = result
-                    if result.get("questions"):
-                        st.success(f"✅ Generated {len(result['questions'])} questions!")
-                        st.rerun()
-                    else:
-                        st.warning("No questions generated.")
-                except Exception as e:
-                    st.error(f"Error generating questions: {str(e)}")
+    # ==========================================
+    # SCREEN 3: Start Quiz Gateway
+    # ==========================================
+    elif state.get("questions_ready") and not state.get("quiz_started"):
+        st.success(f"✅ Generated {state['total_questions']} questions successfully!")
+        st.write("### 🎯 Ready to Begin?")
+        st.write(f"**Mode:** {state['evaluation_style']}")
+        
+        if st.button("🚀 Start Test Now", type="primary"):
+            state["quiz_started"] = True
+            st.rerun() # Hides gateway, shows Question 1
 
-    # Start Quiz Button
-    if (st.session_state.current_state.get("questions") and 
-        not st.session_state.current_state.get("quiz_started") and
-        st.session_state.current_state.get("mode") != "Quiz"):
-        
-        st.write("### 🎯 Ready to Start Quiz!")
-        st.write(f"**Questions prepared:** {len(st.session_state.current_state['questions'])}")
-        st.write(f"**Mode:** {st.session_state.current_state['evaluation_style']}")
-        
-        if st.button("🚀 Start Quiz"):
-            # Initialize quiz state
-            st.session_state.current_state["quiz_started"] = True
-            st.session_state.current_state["question_no"] = 0
-            st.session_state.current_state["current_points"] = 0
-            st.session_state.current_state["mode"] = "Quiz"
-            st.session_state.current_state["current_question"] = None
-            st.session_state.current_state["feedback_text"] = ""
-            st.rerun()
-        # Quiz Interface
-    if st.session_state.current_state.get("quiz_started") and st.session_state.current_state.get("questions"):
-        state = st.session_state.current_state
+    # ==========================================
+    # SCREEN 4: The Testing Page (Question by Question)
+    # ==========================================
+    elif state.get("quiz_started") and not state.get("quiz_complete"):
         q_no = state["question_no"]
-        total_qs = len(state["questions"])
+        total_qs = state["total_questions"]
+        question = state.get("current_question")
 
-        if q_no < total_qs:
-            # Load current question directly from list
-            if not state.get("current_question"):
-                current_question = state["questions"][q_no]
-                st.session_state.current_state["current_question"] = current_question
-                st.rerun()
+        if question:
+            # Progress bar
+            st.progress((q_no) / total_qs, text=f"Question {q_no + 1} of {total_qs}")
+            st.write(f"### Question {q_no + 1}")
+            st.markdown(question["question"])
 
-            # Display current question
-            if state.get("current_question"):
-                question = state["current_question"]
+            # --- FEEDBACK VIEW ---
+            # If they just submitted, show feedback and PAUSE until they click Next
+            if state.get("feedback_text"):
+                if state.get("answer_correct"):
+                    st.success(state["feedback_text"])
+                else:
+                    st.error(state["feedback_text"])
                 
-                # Progress bar
-                progress = q_no / total_qs
-                st.progress(progress, text=f"Question {q_no + 1} of {total_qs}")
+                st.info(f"**Current Score:** {state.get('current_points', 0)} points")
                 
-                st.write(f"### Question {q_no + 1}")
-                st.markdown(question["question"])
-
-                # Show feedback if available
-                if state.get("feedback_text"):
-                    if state.get("answer_correct"):
-                        st.success(state["feedback_text"])
+                # Force user to acknowledge feedback before moving on
+                if st.button("Next Question", type="primary"):
+                    # Apply the buffered next question
+                    state["feedback_text"] = ""
+                    state["answer_correct"] = False
+                    state["question_no"] += 1
+                    
+                    if state.get("is_complete_buffer"):
+                        state["quiz_complete"] = True
                     else:
-                        st.error(state["feedback_text"])
+                        state["current_question"] = state.get("next_question_buffer")
+                    st.rerun()
+            
+            # --- ANSWER SUBMISSION VIEW ---
+            # If no feedback, it means they need to answer the question
+            else:
+                if state["evaluation_style"] == "MCQ":
+                    options = question["options"]
+                    st.write("**Select your answer:**")
                     
-                    st.info(f"**Current Score:** {state['current_points']} points")
-                    
-                    if st.button("Next Question", key=f"next_{q_no}"):
-                        # Clear feedback and move to next question
-                        st.session_state.current_state["feedback_text"] = ""
-                        st.session_state.current_state["current_question"] = None
-                        st.session_state.current_state["answer_correct"] = False
-                        st.rerun()
+                    for key, value in options.items():
+                        # Using full width buttons for clean UI
+                        if st.button(f"{key.upper()}) {value}", key=f"opt_{key}_{q_no}", use_container_width=True):
+                            _submit_answer_to_api(key, state)
                 else:
-                    # Collect answer based on question type
-                    if state["evaluation_style"] == "MCQ":
-                        # MCQ: Display 4 option buttons
-                        options = question["options"]
-                        correct_answer = question["answer"]
-                        
-                        st.write("**Select your answer:**")
-                        
-                        # Create columns for better layout
-                        col1, col2 = st.columns(2)
-                        
-                        for idx, (key, value) in enumerate(options.items()):
-                            col = col1 if idx % 2 == 0 else col2
-                            
-                            with col:
-                                if st.button(f"{key.upper()}) {value}", key=f"option_{key}_{q_no}"):
-                                    # Check if answer is correct
-                                    if key == correct_answer:
-                                        st.session_state.current_state["answer_correct"] = True
-                                        st.session_state.current_state["feedback_text"] = "Correct answer!" + st.session_state.current_state["current_question"]["explanation"]
-                                        st.session_state.current_state["current_points"] += question["difficulty"].value
-                                    else:
-                                        st.session_state.current_state["answer_correct"] = False
-                                        correct_option = options[correct_answer]
-                                        st.session_state.current_state["feedback_text"] = f"Incorrect. Correct answer is {correct_answer.upper()}) {correct_option}"
-                                    
-                                    # Move to next question
-                                    st.session_state.current_state["question_no"] += 1
-                                    st.rerun()
-                    
-                    else:  # Short Questions
-                        # SQ: Display text input
-                        user_answer = st.text_area("Your answer:", key=f"sq_answer_{q_no}", height=100)
-                        
-                        if st.button("Submit Answer", key=f"submit_sq_{q_no}"):
-                            if user_answer.strip():
-                                # Evaluate using similarity
-                                similarity = calculate_similarity(question["answer"], user_answer)
-                                
-                                if similarity >= 0.40 and similarity <= 0.65:
-                                    st.session_state.current_state["answer_correct"] = True
-                                    st.session_state.current_state["feedback_text"] = f"Partial Correct! You can do better. \n {question["explanation"]})"
-                                    st.session_state.current_state["current_points"] += question["difficulty"].value/2
-                                elif similarity > 0.65:
-                                    st.session_state.current_state["answer_correct"] = True
-                                    st.session_state.current_state["feedback_text"] = f"Correct! Good Answer. \n {question["explanation"]})"
-                                    st.session_state.current_state["current_points"] += question["difficulty"].value
+                    user_answer = st.text_area("Type your answer here:", key=f"sq_{q_no}", height=150)
+                    if st.button("Submit Answer", type="primary"):
+                        if user_answer.strip():
+                            _submit_answer_to_api(user_answer, state)
+                        else:
+                            st.warning("Please enter an answer before submitting.")
 
-                                else:
-                                    st.session_state.current_state["answer_correct"] = False
-                                    st.session_state.current_state["feedback_text"] = f"Not quite right. Expected: {question['answer']})"
-                                
-                                # Move to next question
-                                st.session_state.current_state["question_no"] += 1
-                                st.rerun()
-                            else:
-                                st.warning("Please enter an answer before submitting.")
+    # ==========================================
+    # SCREEN 5: Results Page
+    # ==========================================
+# ==========================================
+    # SCREEN 5: Results Page
+    # ==========================================
+    elif state.get("quiz_complete"):
+        st.write("### 🎉 Test Completed!")
+        st.balloons()
+        
+        # Calculate the math
+        curr_pts = state.get("current_points", 0)
+        max_pts = state.get("max_points", 1) # Default to 1 to prevent division by zero errors
+        percentage = (curr_pts / max_pts) * 100
+        
+        # Display side-by-side metrics
+        col1, col2 = st.columns(2)
+        with col1:
+            st.metric(label="Final Score", value=f"{curr_pts} / {max_pts}")
+        with col2:
+            # Color code the percentage!
+            if percentage >= 80:
+                st.metric(label="Accuracy", value=f"{percentage:.1f}%", delta="Great Job!")
+            elif percentage >= 50:
+                st.metric(label="Accuracy", value=f"{percentage:.1f}%", delta="Good Effort", delta_color="off")
+            else:
+                st.metric(label="Accuracy", value=f"{percentage:.1f}%", delta="Needs Review", delta_color="inverse")
+        
+        st.info("Because this is a continuous test, you cannot go back to previous questions. To learn more, you can query your documents in the Query tab, or start a new test!")
+        
+        if st.button("Start New Topic"):
+            reset_session() 
+            st.rerun()
+    else:
+        st.write("wdgye")
 
-        else:
-            # Quiz completed
-            st.write(" Quiz Completed!")
-            
-            max_points = st.session_state.current_state["max_points"]
-            current_points = state.get("current_points")
-            print(current_points)
-            
-            st.write(f"**Final Score:** {current_points}/{max_points} points")
-            
-            if max_points > 0:
-                percentage = (current_points / max_points) * 100
-                st.write(f"**Percentage:** {percentage:.1f}%")
-                
-                if percentage >= 80:
-                    st.success("Excellent work! You've mastered this topic!")
-                elif percentage >= 60:
-                    st.info("Good job! You have a solid understanding.")
-                else:
-                    st.warning("Keep studying! Review the material and try again.")
-            
-            if st.button("Start Over"):
-                st.session_state.current_state = initial_state.copy()
-                st.session_state.thread_id = f"tutor-session-{int(time.time())}"
+# --- Helper Functions ---
+
+def _generate_questions(style: str, state: dict):
+    """Helper to call style API and update state."""
+    with st.spinner(f"Generating {style} questions..."):
+        try:
+            res = requests.post(f"{API_URL}/tutor/set_evaluation_style", json={
+                "session_id": st.session_state.session_id,
+                "thread_id": st.session_state.thread_id,
+                "evaluation_style": style
+            })
+            if res.status_code == 200:
+                data = res.json()
+                state["evaluation_style"] = style
+                state["questions_ready"] = True
+                state["total_questions"] = data["total_questions"]
+                state["current_question"] = data["first_question"]
                 st.rerun()
+            else:
+                st.error(f"Failed to generate questions: {res.json().get('detail', 'Unknown error')}")
+        except Exception as e:
+            st.error(f"Connection failed: {str(e)}")
+
+def _submit_answer_to_api(answer_text: str, state: dict):
+    """Helper to grade answer and buffer the next question."""
+    with st.spinner("Grading..."):
+        try:
+            res = requests.post(f"{API_URL}/tutor/submit_answer", json={
+                "session_id": st.session_state.session_id,
+                "thread_id": st.session_state.thread_id,
+                "user_answer": answer_text
+            })
+            
+            if res.status_code == 200:
+                data = res.json()
+                state["feedback_text"] = data["feedback"]
+                state["current_points"] = data["current_points"]
+                state["max_points"] = data.get("max_points", 1)
+                state["answer_correct"] = data["is_correct"]
+                
+                # CRITICAL: Buffer the next question so the UI doesn't swap text behind the feedback
+                state["next_question_buffer"] = data["next_question"]
+                state["is_complete_buffer"] = data["is_complete"]
+                st.rerun()
+            else:
+                st.error(f"Failed to submit answer: {res.json().get('detail', 'Unknown error')}")
+        except Exception as e:
+            st.error(f"Connection failed: {str(e)}")
